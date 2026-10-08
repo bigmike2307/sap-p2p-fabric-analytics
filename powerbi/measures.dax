@@ -1,0 +1,119 @@
+// =============================================================================
+// P2P semantic model: DAX measures
+// Direct Lake over the gold tables. Rename the tables in the model to:
+//   gold_fact_po_item          -> 'PO Item'
+//   gold_fact_supplier_invoice -> 'Supplier Invoice'
+//   gold_dim_supplier          -> 'Supplier'      (and so on for the other dims)
+//   gold_dim_date              -> 'Date'          (mark as date table on [date])
+// The business rules live in the gold layer; these measures only aggregate its
+// flags, so the report always agrees with the pipeline's KPI snapshot.
+// =============================================================================
+
+// ---------- Spend and buying compliance -------------------------------------
+
+Spend (GBP) =
+SUM ( 'PO Item'[net_amount_gbp] )                                  // format: £#,0
+
+Spend PY (GBP) =
+CALCULATE ( [Spend (GBP)], SAMEPERIODLASTYEAR ( 'Date'[date] ) )
+
+Spend YoY % =
+DIVIDE ( [Spend (GBP)] - [Spend PY (GBP)], [Spend PY (GBP)] )      // format: 0.0%
+
+PO Items =
+COUNTROWS ( 'PO Item' )
+
+PR-backed % =
+DIVIDE ( CALCULATE ( [PO Items], 'PO Item'[is_pr_backed] = TRUE () ), [PO Items] )
+
+After-the-fact PO Items =
+CALCULATE ( [PO Items], 'PO Item'[is_after_the_fact] = TRUE () )
+
+After-the-fact Spend (GBP) =
+CALCULATE ( [Spend (GBP)], 'PO Item'[is_after_the_fact] = TRUE () )
+
+After-the-fact % =
+DIVIDE ( [After-the-fact PO Items], [PO Items] )
+
+Avg PR-to-PO Days =
+AVERAGE ( 'PO Item'[pr_to_po_days] )                               // format: 0.0
+
+Top 10 Supplier Spend Share =
+VAR Top10 = TOPN ( 10, ALL ( 'Supplier' ), [Spend (GBP)] )
+RETURN
+    DIVIDE (
+        CALCULATE ( [Spend (GBP)], Top10 ),
+        CALCULATE ( [Spend (GBP)], ALL ( 'Supplier' ) )
+    )
+
+// ---------- Delivery performance ----------------------------------------------
+
+Due Items =
+CALCULATE ( [PO Items], 'PO Item'[is_due] = TRUE () )
+
+On-time % =
+DIVIDE ( CALCULATE ( [PO Items], 'PO Item'[is_on_time] = TRUE () ), [Due Items] )
+
+OTIF % =
+DIVIDE ( CALCULATE ( [PO Items], 'PO Item'[is_otif] = TRUE () ), [Due Items] )
+
+Short-delivery Gap (pts) =
+[On-time %] - [OTIF %]                                             // what short deliveries cost
+
+Avg PO-to-GR Days =
+AVERAGE ( 'PO Item'[po_to_first_gr_days] )
+
+// ---------- GR/IR ------------------------------------------------------------
+
+GR Not Invoiced (GBP) =
+CALCULATE ( SUM ( 'PO Item'[grir_balance_gbp] ), 'PO Item'[grir_status] = "GR not invoiced" )
+
+GR/IR Over 90 Days (GBP) =
+CALCULATE ( [GR Not Invoiced (GBP)], 'PO Item'[grir_age_bucket] = "90+" )
+
+GR/IR Aged % =
+DIVIDE ( [GR/IR Over 90 Days (GBP)], [GR Not Invoiced (GBP)] )
+
+Invoiced Not Received (GBP) =
+- CALCULATE ( SUM ( 'PO Item'[grir_balance_gbp] ), 'PO Item'[grir_status] = "Invoiced not received" )
+
+// ---------- Invoices and payments -------------------------------------------
+
+Invoices =
+COUNTROWS ( 'Supplier Invoice' )
+
+Invoice Value (GBP) =
+SUM ( 'Supplier Invoice'[gross_amount_gbp] )
+
+First-time Match % =
+1 - DIVIDE ( CALCULATE ( [Invoices], 'Supplier Invoice'[is_payment_blocked] = TRUE () ), [Invoices] )
+
+Duplicate Suspects =
+CALCULATE ( [Invoices], 'Supplier Invoice'[is_duplicate_suspect] = TRUE () )
+
+Duplicate Suspect Value (GBP) =
+CALCULATE ( [Invoice Value (GBP)], 'Supplier Invoice'[is_duplicate_suspect] = TRUE () )
+
+Paid Invoices =
+CALCULATE ( [Invoices], 'Supplier Invoice'[is_paid] = TRUE () )
+
+Paid On Time % =
+DIVIDE ( CALCULATE ( [Invoices], 'Supplier Invoice'[is_paid_on_time] = TRUE () ), [Paid Invoices] )
+
+Paid Early % =
+DIVIDE ( CALCULATE ( [Invoices], 'Supplier Invoice'[is_paid_early] = TRUE () ), [Paid Invoices] )
+
+Paid Early Value (GBP) =
+CALCULATE ( [Invoice Value (GBP)], 'Supplier Invoice'[is_paid_early] = TRUE () )
+
+Avg Days to Pay =
+AVERAGE ( 'Supplier Invoice'[days_to_pay] )
+
+Open Payables (GBP) =
+CALCULATE ( [Invoice Value (GBP)], 'Supplier Invoice'[is_open] = TRUE () )
+
+Overdue Payables (GBP) =
+CALCULATE ( [Invoice Value (GBP)], 'Supplier Invoice'[is_overdue] = TRUE () )
+
+Overdue Invoices =
+CALCULATE ( [Invoices], 'Supplier Invoice'[is_overdue] = TRUE () )

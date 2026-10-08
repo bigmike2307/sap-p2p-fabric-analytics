@@ -1,5 +1,7 @@
 # Procure-to-Pay Analytics: SAP S/4HANA → Microsoft Fabric
 
+[![pipeline-tests](https://github.com/bigmike2307/sap-p2p-fabric-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/bigmike2307/sap-p2p-fabric-analytics/actions/workflows/ci.yml)
+
 End-to-end Procure-to-Pay (P2P) analytics for a UK food manufacturer: **SAP CDS extraction views → Fabric Lakehouse (bronze / silver / gold) → Direct Lake semantic model → Power BI**, with an automated data-quality gate that reconciles every KPI before the report refreshes.
 
 The data is synthetic but follows real SAP conventions (zero-padded keys, `YYYYMMDD` dates, debit/credit indicators, price units, inverted exchange-rate dates), so the pipeline handles the same problems a live S/4HANA system creates.
